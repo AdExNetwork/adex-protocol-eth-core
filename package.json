@@ -16,17 +16,19 @@
     "truffle": "^5.1.5"
   },
   "devDependencies": {
-    "ganache-cli": "^6.10.1",
     "eslint": "^5.16.0",
     "eslint-config-airbnb-base": "^13.1.0",
     "eslint-config-prettier": "^4.1.0",
     "eslint-plugin-import": "^2.16.0",
     "eslint-plugin-prettier": "^3.0.1",
-    "prettier": "^1.16.4"
+    "ganache-cli": "^6.10.1",
+    "prettier": "^1.16.4",
+    "solidity-coverage": "^0.7.10"
   },
   "scripts": {
     "test": "truffle test",
     "lint": "eslint .  -c .eslintrc.js --fix",
+    "coverage": "truffle run coverage --solcoverjs ./solcover.js --file=\"test/TestAdExRecoveryDao.js\"",
     "preversion": "./build.sh"
   },
   "repository": {

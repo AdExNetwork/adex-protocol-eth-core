@@ -1,12 +1,14 @@
 const { Channel } = require('../js')
 
-async function expectEVMError(promise, errString) {
+const NULL_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+async function expectEVMError(promise, errString, prefix = '') {
 	try {
 		await promise
 		assert.isOk(false, `should have failed with ${errString}`)
 	} catch (e) {
 		const expectedString = errString
-			? `VM Exception while processing transaction: revert ${errString}`
+			? `${prefix}VM Exception while processing transaction: revert ${errString}`
 			: 'VM Exception while processing transaction: revert'
 		assert.equal(e.message, expectedString, 'error message is incorrect')
 	}
@@ -60,4 +62,61 @@ async function setTime(web3, time) {
 	})
 }
 
-module.exports = { expectEVMError, sampleChannel, moveTime, setTime }
+function toUnixTimestamp(timestamp) {
+	return Math.floor(timestamp / 1000)
+}
+
+function currentTimestamp() {
+	return toUnixTimestamp(Date.now())
+}
+
+function takeSnapshot(web3) {
+	return new Promise((resolve, reject) => {
+		web3.currentProvider.send(
+			{
+				jsonrpc: '2.0',
+				method: 'evm_snapshot',
+				params: [],
+				id: new Date().getTime()
+			},
+			(err, result) => {
+				if (err) {
+					return reject(err)
+				}
+
+				return resolve(result.result)
+			}
+		)
+	})
+}
+
+function revertToSnapshot(web3, snapShotId) {
+	return new Promise((resolve, reject) => {
+		web3.currentProvider.send(
+			{
+				jsonrpc: '2.0',
+				method: 'evm_revert',
+				params: [snapShotId],
+				id: new Date().getTime()
+			},
+			err => {
+				if (err) {
+					return reject(err)
+				}
+
+				return resolve()
+			}
+		)
+	})
+}
+module.exports = {
+	expectEVMError,
+	sampleChannel,
+	moveTime,
+	setTime,
+	toUnixTimestamp,
+	currentTimestamp,
+	takeSnapshot,
+	revertToSnapshot,
+	NULL_ADDRESS
+}

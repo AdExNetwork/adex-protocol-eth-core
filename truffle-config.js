@@ -107,5 +107,6 @@ module.exports = {
 				evmVersion: 'constantinople'
 			}
 		}
-	}
+	},
+	plugins: ['solidity-coverage']
 }
