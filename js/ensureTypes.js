@@ -5,6 +5,7 @@ function Uint256(x) {
 	if (bn.isNeg()) throw new Error('uint256 expected, negative number given')
 	return bn
 }
+
 function Address(x) {
 	if (!(typeof x === 'string' && x.length === 42 && x.startsWith('0x')))
 		throw new Error('invalid address: must start with a 0x and be 42 characters long')

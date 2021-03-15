@@ -138,7 +138,7 @@ contract StakingPool {
 
 	// Staking pool events
 	// LogLeave/LogWithdraw must begin with the UnbondCommitment struct
-	event LogLeave(address indexed owner, uint shares, uint unlockAt, uint maxTokens);
+	event LogLeave(address indexed owner, uint shares, uint unlocksAt, uint maxTokens);
 	event LogWithdraw(address indexed owner, uint shares, uint unlocksAt, uint maxTokens, uint receivedTokens);
 	event LogRageLeave(address indexed owner, uint shares, uint maxTokens, uint receivedTokens);
 	event LogNewGuardian(address newGuardian);
@@ -208,12 +208,12 @@ contract StakingPool {
 			* 1e18
 			/ totalSupply;
 	}
-
+	event Testing(uint256 shares);
 	function innerEnter(address recipient, uint amount) internal {
 		// Please note that minting has to be in the beginning so that we take it into account
 		// when using ADXToken.balanceOf()
 		// Minting makes an external call but it's to a trusted contract (ADXToken)
-		ADXToken.supplyController().mintIncentive(address(this));
+		ADXToken.supplyController().mintIncentive(ADXToken, address(this));
 
 		uint totalADX = ADXToken.balanceOf(address(this));
 
@@ -221,7 +221,13 @@ contract StakingPool {
 		if (totalSupply == 0 || totalADX == 0) {
 			innerMint(recipient, amount);
 		} else {
+
 			uint256 newShares = amount * totalSupply / totalADX;
+			emit Testing(amount);
+			emit Testing(totalSupply);
+			emit Testing(totalADX);
+			emit Testing(newShares);
+			
 			innerMint(recipient, newShares);
 		}
 		require(ADXToken.transferFrom(msg.sender, address(this), amount));
@@ -247,7 +253,7 @@ contract StakingPool {
 	}
 
 	function leave(uint shares, bool skipMint) external {
-		if (!skipMint) ADXToken.supplyController().mintIncentive(address(this));
+		if (!skipMint) ADXToken.supplyController().mintIncentive(ADXToken, address(this));
 
 		require(shares <= balances[msg.sender] - lockedShares[msg.sender], 'INSUFFICIENT_SHARES');
 		uint totalADX = ADXToken.balanceOf(address(this));
@@ -264,7 +270,7 @@ contract StakingPool {
 	}
 
 	function withdraw(uint shares, uint unlocksAt, bool skipMint) external {
-		if (!skipMint) ADXToken.supplyController().mintIncentive(address(this));
+		if (!skipMint) ADXToken.supplyController().mintIncentive(ADXToken, address(this));
 
 		require(block.timestamp > unlocksAt, 'UNLOCK_TOO_EARLY');
 		bytes32 commitmentId = keccak256(abi.encode(UnbondCommitment({ owner: msg.sender, shares: shares, unlocksAt: unlocksAt })));
@@ -284,7 +290,7 @@ contract StakingPool {
 	}
 
 	function rageLeave(uint shares, bool skipMint) external {
-		if (!skipMint) ADXToken.supplyController().mintIncentive(address(this));
+		if (!skipMint) ADXToken.supplyController().mintIncentive(ADXToken, address(this));
 		uint totalADX = ADXToken.balanceOf(address(this));
 		uint adxAmount = shares * totalADX / totalSupply;
 		uint receivedTokens = adxAmount * RAGE_RECEIVED_PROMILLES / 1000;

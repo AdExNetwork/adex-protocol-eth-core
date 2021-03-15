@@ -1,21 +1,30 @@
 /** globals afterEach */
 const { providers, Contract } = require('ethers')
-const { bigNumberify } = require('ethers').utils
+const { bigNumberify, parseUnits } = require('ethers').utils
 
-const { expectEVMError, takeSnapshot, revertToSnapshot } = require('./')
+const { expectEVMError, takeSnapshot, revertToSnapshot, moveTime } = require('./')
+const { UnbondCommitment } = require('../js')
 
-const StakingPool = artifacts.require('StakingPool')
+const StakingPoolArtifact = artifacts.require('StakingPool')
 const MockChainlink = artifacts.require('MockChainlink')
 const MockUniswap = artifacts.require('MockUniswap')
 const MockToken = artifacts.require('Token')
+const ADXSupplyController = artifacts.require('ADXSupplyController')
+const ADXToken = artifacts.require('ADXToken')
 
 const web3Provider = new providers.Web3Provider(web3.currentProvider)
 
+const parseADX = v => parseUnits(v, 18)
+const DAY_SECONDS = 24 * 60 * 60
+
 contract('StakingPool', function(accounts) {
 	let stakingPool
-	let token
+	// let token
+	let prevToken
 	let chainlink
 	let uniswap
+	let adxSupplyController
+	let adxToken
 	let snapShotId
 	const userAcc = accounts[0]
 	const guardianAddr = accounts[1]
@@ -28,12 +37,21 @@ contract('StakingPool', function(accounts) {
 
 		// WARNING: all invokations to core/token will be from account[0]
 		const signer = web3Provider.getSigner(userAcc)
-		token = new Contract(tokenWeb3.address, MockToken._json.abi, signer)
+		prevToken = new Contract(tokenWeb3.address, MockToken._json.abi, signer)
+
+		const adxSupplyControllerWeb3 = await ADXSupplyController.new()
+		adxSupplyController = new Contract(
+			adxSupplyControllerWeb3.address,
+			ADXSupplyController._json.abi,
+			signer
+		)
+		const adxTokenWeb3 = await ADXToken.new(adxSupplyController.address, prevToken.address)
+		adxToken = new Contract(adxTokenWeb3.address, ADXToken._json.abi, signer)
 
 		const chainlinkWeb3 = await MockChainlink.new()
 		const uniswapWeb3 = await MockUniswap.new()
-		const stakingPoolWeb3 = await StakingPool.new(
-			tokenWeb3.address,
+		const stakingPoolWeb3 = await StakingPoolArtifact.new(
+			adxToken.address,
 			uniswapWeb3.address,
 			chainlinkWeb3.address,
 			guardianAddr,
@@ -41,7 +59,7 @@ contract('StakingPool', function(accounts) {
 			governanceAddr
 		)
 
-		stakingPool = new Contract(stakingPoolWeb3.address, StakingPool._json.abi, signer)
+		stakingPool = new Contract(stakingPoolWeb3.address, StakingPoolArtifact._json.abi, signer)
 		chainlink = new Contract(chainlinkWeb3.address, MockChainlink._json.abi, signer)
 		uniswap = new Contract(uniswapWeb3.address, MockUniswap._json.abi, signer)
 	})
@@ -131,10 +149,166 @@ contract('StakingPool', function(accounts) {
 		)
 	})
 
-    it.only('enter', async function() {
-        const amountToEnter = 1000
-        // approve Staking pool 
-        await (await token.approve(StakingPool.address, 1000).wait()
-    })
-    
+	it('enter', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		// set user balance
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		// approve Staking pool
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+
+		const receipt = await (await stakingPool.enter(parseADX('10'))).wait()
+		assert.equal(receipt.events.length, 3, 'should emit event')
+
+		assert.equal(
+			(await stakingPool.balanceOf(userAcc)).toString(),
+			parseADX('10').toString(),
+			'should mint equivalent pool tokens'
+		)
+
+		// set incentive
+		await (await adxSupplyController.setIncentive(stakingPool.address, parseADX('0.1'))).wait()
+
+		await moveTime(web3, DAY_SECONDS * 10)
+		await (await stakingPool.enter(parseADX('10'))).wait()
+
+		assert.equal(
+			(await stakingPool.balanceOf(userAcc)).toString(),
+			'10001157273463719476',
+			'should mint additional shares'
+		)
+	})
+
+	it('enterTo', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		// set user balance
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		// approve Staking pool
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+
+		const receipt = await (await stakingPool.enterTo(guardianAddr, parseADX('10'))).wait()
+		assert.equal(receipt.events.length, 3, 'should emit event')
+
+		assert.equal(
+			(await stakingPool.balanceOf(guardianAddr)).toString(),
+			parseADX('10').toString(),
+			'should mint equivalent pool tokens'
+		)
+	})
+
+	it('leave', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		// set user balance
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		// approve Staking pool
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+		// enter staking pool
+		const sharesToMint = parseADX('10')
+		await (await stakingPool.enter(sharesToMint)).wait()
+
+		await expectEVMError(stakingPool.leave(parseADX('10000'), false), 'INSUFFICIENT_SHARES')
+
+		const receipt = await (await stakingPool.leave(sharesToMint, false)).wait()
+		const currentBlockTimestamp = (await web3.eth.getBlock('latest')).timestamp
+		assert.equal(receipt.events.length, 2, 'should emit LogLeave event')
+
+		const logLeaveEv = receipt.events.find(ev => ev.event === 'LogLeave')
+		assert.ok(logLeaveEv, 'should have LogLeave event')
+		assert.ok(
+			currentBlockTimestamp + (await stakingPool.TIME_TO_UNBOND()).toNumber(),
+			logLeaveEv.args.unlocksAt.toNumber(),
+			'should have correct unlocksAt'
+		)
+
+		const unbondCommitment = new UnbondCommitment({
+			...logLeaveEv.args,
+			shares: logLeaveEv.args.shares.toString(),
+			unlocksAt: logLeaveEv.args.unlocksAt.toString()
+		})
+
+		assert.equal(
+			(await stakingPool.commitments(unbondCommitment.hashHex())).toString(),
+			sharesToMint.toString()
+		)
+
+		assert.equal(
+			(await stakingPool.lockedShares(logLeaveEv.args.owner)).toString(),
+			sharesToMint.toString()
+		)
+	})
+
+	it('withdraw', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+		const sharesToMint = parseADX('10')
+		await (await stakingPool.enter(sharesToMint)).wait()
+
+		const leaveReceipt = await (await stakingPool.leave(parseADX('10'), false)).wait()
+		const logLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogLeave')
+		await expectEVMError(
+			stakingPool.withdraw(sharesToMint, logLeaveEv.args.unlocksAt, false),
+			'UNLOCK_TOO_EARLY'
+		)
+
+		await moveTime(web3, logLeaveEv.args.unlocksAt.toNumber() + 10)
+
+		await expectEVMError(
+			stakingPool.withdraw(sharesToMint, logLeaveEv.args.unlocksAt.toNumber() + 1000, false),
+			'NO_COMMITMENT'
+		)
+
+		const withdrawReceipt = await (await stakingPool.withdraw(
+			sharesToMint,
+			logLeaveEv.args.unlocksAt.toNumber(),
+			false
+		)).wait()
+
+		const logWithdrawEv = withdrawReceipt.events.find(ev => ev.event === 'LogWithdraw')
+		assert.ok(logWithdrawEv, 'should have LogWithdraw ev')
+
+		const unbondCommitment = new UnbondCommitment({
+			...logLeaveEv.args,
+			shares: logLeaveEv.args.shares.toString(),
+			unlocksAt: logLeaveEv.args.unlocksAt.toString()
+		})
+
+		assert.equal((await stakingPool.commitments(unbondCommitment.hashHex())).toString(), '0')
+
+		assert.equal((await stakingPool.lockedShares(logLeaveEv.args.owner)).toString(), '0')
+		// @TODO check shares amount
+	})
+
+	it.only('rageLeave', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+		const sharesToMint = parseADX('10')
+		await (await stakingPool.enter(sharesToMint)).wait()
+
+		const leaveReceipt = await (await stakingPool.rageLeave(parseADX('10'), false)).wait()
+		const logRageLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogRageLeave')
+
+		//@TODO confirm received Tokens
+		assert.equal(
+			(await adxToken.balanceOf(userAcc)).toString(),
+			logRageLeaveEv.args.receivedTokens.toString(),
+			'should receive tokens'
+		)
+	})
+
+	it('claim', async function() {})
+
+	it('penalize', async function() {})
+
+	it('resetLimits', async function() {})
 })
