@@ -286,7 +286,7 @@ contract('StakingPool', function(accounts) {
 		// @TODO check shares amount
 	})
 
-	it.only('rageLeave', async function() {
+	it('rageLeave', async function() {
 		const amountToEnter = bigNumberify('1000000')
 		await prevToken.setBalanceTo(userAcc, amountToEnter)
 		await adxToken.swap(amountToEnter)
@@ -298,7 +298,7 @@ contract('StakingPool', function(accounts) {
 		const leaveReceipt = await (await stakingPool.rageLeave(parseADX('10'), false)).wait()
 		const logRageLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogRageLeave')
 
-		//@TODO confirm received Tokens
+		// @TODO confirm received Tokens
 		assert.equal(
 			(await adxToken.balanceOf(userAcc)).toString(),
 			logRageLeaveEv.args.receivedTokens.toString(),
@@ -306,7 +306,19 @@ contract('StakingPool', function(accounts) {
 		)
 	})
 
-	it('claim', async function() {})
+	it.only('claim', async function() {
+		const amountToEnter = bigNumberify('35 000 000')
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+		const sharesToMint = parseADX('10')
+		await (await stakingPool.enter(sharesToMint)).wait()
+
+		// const claimReceipt = await (await stakingPool
+		// 	.connect(web3Provider.getSigner(guardianAddr))
+		// 	.claim('0xdAC17F958D2ee523a2206206994597C13D831ec7', guardianAddr, parseADX('100'))).wait()
+	})
 
 	it('penalize', async function() {})
 

@@ -87,7 +87,7 @@ contract('ADXToken', function(accounts) {
 		assert.ok(receipt.gasUsed.toNumber() < 56000, 'gas usage is OK')
 	})
 
-	it('supply controller - mint and step down', async function() {
+	it.only('supply controller - mint and step down', async function() {
 		const tokenAddr = adxToken.address
 		const [initialSupply, initialBal] = await Promise.all([
 			adxToken.totalSupply(),
@@ -95,19 +95,21 @@ contract('ADXToken', function(accounts) {
 		])
 
 		const largeAmnt = bigNumberify('60000000000000000000000000')
+		const totalSupply = (await adxToken.totalSupply()).toString()
+		console.log({ totalSupply })
 		await expectEVMError(
 			adxSupplyController.mint(tokenAddr, userAddr, largeAmnt.mul(5)),
 			'MINT_TOO_LARGE'
 		)
-		const receipt = await (await adxSupplyController.mint(tokenAddr, userAddr, largeAmnt)).wait()
-		assert.equal(receipt.events.length, 1, 'has one transfer event')
-		// assert.equal(receipt.events[0].event, 'Transfer', 'event is a transfer')
-		// assert.deepEqual(receipt.events[0].amount, largeAmnt, 'Transfer amount is OK')
-		assert.deepEqual(await adxToken.totalSupply(), initialSupply.add(largeAmnt), 'supply is OK')
-		assert.deepEqual(await adxToken.balanceOf(userAddr), initialBal.add(largeAmnt), 'balance is OK')
+		// const receipt = await (await adxSupplyController.mint(tokenAddr, userAddr, largeAmnt)).wait()
+		// assert.equal(receipt.events.length, 1, 'has one transfer event')
+		// // assert.equal(receipt.events[0].event, 'Transfer', 'event is a transfer')
+		// // assert.deepEqual(receipt.events[0].amount, largeAmnt, 'Transfer amount is OK')
+		// assert.deepEqual(await adxToken.totalSupply(), initialSupply.add(largeAmnt), 'supply is OK')
+		// assert.deepEqual(await adxToken.balanceOf(userAddr), initialBal.add(largeAmnt), 'balance is OK')
 
-		// Governance can step down
-		await adxSupplyController.setGovernance(governance, 0)
-		await expectEVMError(adxSupplyController.mint(tokenAddr, userAddr, largeAmnt), 'NOT_GOVERNANCE')
+		// // Governance can step down
+		// await adxSupplyController.setGovernance(governance, 0)
+		// await expectEVMError(adxSupplyController.mint(tokenAddr, userAddr, largeAmnt), 'NOT_GOVERNANCE')
 	})
 })
