@@ -320,7 +320,9 @@ contract('StakingPool', function(accounts) {
 		// 	.claim('0xdAC17F958D2ee523a2206206994597C13D831ec7', guardianAddr, parseADX('100'))).wait()
 	})
 
-	it('penalize', async function() {})
+	it('penalize', async function() {
+		
+	})
 
 	it('resetLimits', async function() {})
 })
