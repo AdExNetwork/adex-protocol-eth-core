@@ -87,7 +87,7 @@ contract('ADXToken', function(accounts) {
 		assert.ok(receipt.gasUsed.toNumber() < 56000, 'gas usage is OK')
 	})
 
-	it.only('supply controller - mint and step down', async function() {
+	it('supply controller - mint and step down', async function() {
 		const tokenAddr = adxToken.address
 		const [initialSupply, initialBal] = await Promise.all([
 			adxToken.totalSupply(),

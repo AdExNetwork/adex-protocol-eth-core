@@ -56,7 +56,8 @@ contract('StakingPool', function(accounts) {
 			chainlinkWeb3.address,
 			guardianAddr,
 			validatorAddr,
-			governanceAddr
+			governanceAddr,
+			adxToken.address
 		)
 
 		stakingPool = new Contract(stakingPoolWeb3.address, StakingPoolArtifact._json.abi, signer)
@@ -306,23 +307,54 @@ contract('StakingPool', function(accounts) {
 		)
 	})
 
-	it.only('claim', async function() {
-		const amountToEnter = bigNumberify('35 000 000')
+	it('claim', async function() {
+		const amountToEnter = bigNumberify('1000000')
 		await prevToken.setBalanceTo(userAcc, amountToEnter)
 		await adxToken.swap(amountToEnter)
 
 		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
-		const sharesToMint = parseADX('10')
+		const sharesToMint = parseADX('30')
 		await (await stakingPool.enter(sharesToMint)).wait()
 
-		// const claimReceipt = await (await stakingPool
-		// 	.connect(web3Provider.getSigner(guardianAddr))
-		// 	.claim('0xdAC17F958D2ee523a2206206994597C13D831ec7', guardianAddr, parseADX('100'))).wait()
+		await expectEVMError(
+			stakingPool.claim(prevToken.address, guardianAddr, parseADX('8')),
+			'NOT_GUARDIAN'
+		)
+
+		await expectEVMError(
+			stakingPool
+				.connect(web3Provider.getSigner(guardianAddr))
+				.claim(prevToken.address, guardianAddr, parseADX('8')),
+			'TOKEN_NOT_WHITELISTED'
+		)
+
+		await expectEVMError(
+			stakingPool
+				.connect(web3Provider.getSigner(guardianAddr))
+				.claim(adxToken.address, guardianAddr, parseADX('100')),
+			'INSUFFICIENT_ADX'
+		)
+
+		const claimReceipt = await (await stakingPool
+			.connect(web3Provider.getSigner(guardianAddr))
+			.claim(adxToken.address, guardianAddr, parseADX('8'))).wait()
+
+		// @TODO limitremaining test
 	})
 
-	it('penalize', async function() {
+	it.only('penalize', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		await prevToken.setBalanceTo(userAcc, amountToEnter)
+		await adxToken.swap(amountToEnter)
+
+		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
+		const sharesToMint = parseADX('30')
+		await (await stakingPool.enter(sharesToMint)).wait()
+
+		await expectEVMError(stakingPool.penalize(parseADX('8')), 'NOT_GUARDIAN')
+	})
+
+	it('resetLimits', async function() {
 		
 	})
-
-	it('resetLimits', async function() {})
 })

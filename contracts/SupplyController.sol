@@ -58,9 +58,9 @@ contract ADXSupplyController {
 		return (block.timestamp - incentiveLastMint[addr]) * incentivePerSecond[addr];
 	}
 
-	function mintIncentive(address addr) external {
+	function mintIncentive(IADXToken token, address addr) external {
 		uint amount = mintableIncentive(addr);
 		incentiveLastMint[addr] = block.timestamp;
-		innerMint(ADX, addr, amount);
+		innerMint(token, addr, amount);
 	}
 }
