@@ -21,7 +21,9 @@ contract('StakingPool', function(accounts) {
 	let stakingPool
 	// let token
 	let prevToken
+	// eslint-disable-next-line no-unused-vars
 	let chainlink
+	// eslint-disable-next-line no-unused-vars
 	let uniswap
 	let adxSupplyController
 	let adxToken
@@ -39,14 +41,17 @@ contract('StakingPool', function(accounts) {
 		const signer = web3Provider.getSigner(userAcc)
 		prevToken = new Contract(tokenWeb3.address, MockToken._json.abi, signer)
 
-		const adxSupplyControllerWeb3 = await ADXSupplyController.new()
+		const adxTokenWeb3 = await ADXToken.new(userAcc, prevToken.address)
+		adxToken = new Contract(adxTokenWeb3.address, ADXToken._json.abi, signer)
+
+		const adxSupplyControllerWeb3 = await ADXSupplyController.new(adxToken.address)
 		adxSupplyController = new Contract(
 			adxSupplyControllerWeb3.address,
 			ADXSupplyController._json.abi,
 			signer
 		)
-		const adxTokenWeb3 = await ADXToken.new(adxSupplyController.address, prevToken.address)
-		adxToken = new Contract(adxTokenWeb3.address, ADXToken._json.abi, signer)
+
+		await adxToken.changeSupplyController(adxSupplyController.address)
 
 		const chainlinkWeb3 = await MockChainlink.new()
 		const uniswapWeb3 = await MockUniswap.new()
@@ -111,7 +116,7 @@ contract('StakingPool', function(accounts) {
 			stakingPool.connect(governanceSigner).setDailyPenaltyMax(1000),
 			'DAILY_PENALTY_TOO_LARGE'
 		)
-		const newDailyPenalty = 300
+		const newDailyPenalty = 200
 		await stakingPool.connect(governanceSigner).setDailyPenaltyMax(newDailyPenalty)
 
 		assert.equal(
@@ -255,7 +260,7 @@ contract('StakingPool', function(accounts) {
 		const leaveReceipt = await (await stakingPool.leave(parseADX('10'), false)).wait()
 		const logLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogLeave')
 		await expectEVMError(
-			stakingPool.withdraw(sharesToMint, logLeaveEv.args.unlocksAt, false),
+			stakingPool.withdraw(sharesToMint, logLeaveEv.args.unlocksAt.toNumber(), false),
 			'UNLOCK_TOO_EARLY'
 		)
 
@@ -295,19 +300,19 @@ contract('StakingPool', function(accounts) {
 		await (await adxToken.approve(stakingPool.address, parseADX('1000'))).wait()
 		const sharesToMint = parseADX('10')
 		await (await stakingPool.enter(sharesToMint)).wait()
-
+		const currentBalance = await adxToken.balanceOf(userAcc)
 		const leaveReceipt = await (await stakingPool.rageLeave(parseADX('10'), false)).wait()
 		const logRageLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogRageLeave')
 
 		// @TODO confirm received Tokens
 		assert.equal(
 			(await adxToken.balanceOf(userAcc)).toString(),
-			logRageLeaveEv.args.receivedTokens.toString(),
+			currentBalance.add(logRageLeaveEv.args.receivedTokens).toString(),
 			'should receive tokens'
 		)
 	})
 
-	it('claim', async function() {
+	it.only('claim', async function() {
 		const amountToEnter = bigNumberify('1000000')
 		await prevToken.setBalanceTo(userAcc, amountToEnter)
 		await adxToken.swap(amountToEnter)
@@ -335,14 +340,12 @@ contract('StakingPool', function(accounts) {
 			'INSUFFICIENT_ADX'
 		)
 
-		const claimReceipt = await (await stakingPool
+		await (await stakingPool
 			.connect(web3Provider.getSigner(guardianAddr))
 			.claim(adxToken.address, guardianAddr, parseADX('8'))).wait()
-
-		// @TODO limitremaining test
 	})
 
-	it.only('penalize', async function() {
+	it('penalize', async function() {
 		const amountToEnter = bigNumberify('1000000')
 		await prevToken.setBalanceTo(userAcc, amountToEnter)
 		await adxToken.swap(amountToEnter)
@@ -352,9 +355,5 @@ contract('StakingPool', function(accounts) {
 		await (await stakingPool.enter(sharesToMint)).wait()
 
 		await expectEVMError(stakingPool.penalize(parseADX('8')), 'NOT_GUARDIAN')
-	})
-
-	it('resetLimits', async function() {
-		
 	})
 })

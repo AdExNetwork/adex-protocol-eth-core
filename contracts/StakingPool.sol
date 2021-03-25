@@ -138,7 +138,7 @@ contract StakingPool {
 
 	// Staking pool events
 	// LogLeave/LogWithdraw must begin with the UnbondCommitment struct
-	event LogLeave(address indexed owner, uint shares, uint unlockAt, uint maxTokens);
+	event LogLeave(address indexed owner, uint shares, uint unlocksAt, uint maxTokens);
 	event LogWithdraw(address indexed owner, uint shares, uint unlocksAt, uint maxTokens, uint receivedTokens);
 	event LogRageLeave(address indexed owner, uint shares, uint maxTokens, uint receivedTokens);
 	event LogNewGuardian(address newGuardian);
