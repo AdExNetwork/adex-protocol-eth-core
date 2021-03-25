@@ -15,8 +15,8 @@ contract MockUniswap {
 		uint /*deadline*/
     ) external pure returns (uint[] memory amounts) {
         amounts = new uint[](3);
-        amounts[0] = amountOut;
-        amounts[1] = amountOut;
-        amounts[2] = amountOut;
+        amounts[0] = amountOut / 1000;
+        amounts[1] = amountOut / 1000;
+        amounts[2] = amountOut / 1000;
     }
 }

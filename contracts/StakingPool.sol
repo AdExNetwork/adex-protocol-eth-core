@@ -339,8 +339,8 @@ contract StakingPool {
 		if (toBurn > 0) innerBurn(validator, toBurn);
 
 		// Technically redundant cause we'll fail on the subtraction, but we're doing this for better err msgs
-		// require(limitRemaining >= adxAmountUsed, 'LIMITS');
-		// limitRemaining -= adxAmountUsed;
+		require(limitRemaining >= adxAmountUsed, 'LIMITS');
+		limitRemaining -= adxAmountUsed;
 
 		emit LogClaim(tokenOut, to, amount, toBurn, adxAmountUsed, totalADX, totalSupply);
 	}
@@ -350,8 +350,8 @@ contract StakingPool {
 		// resets limit
 		resetLimits();
 		// Technically redundant cause we'll fail on the subtraction, but we're doing this for better err msgs
-		// require(limitRemaining >= adxAmount, 'LIMITS');
-		// limitRemaining -= adxAmount;
+		require(limitRemaining >= adxAmount, 'LIMITS');
+		limitRemaining -= adxAmount;
 		require(ADXToken.transfer(address(0), adxAmount));
 		emit LogPenalize(adxAmount);
 	}

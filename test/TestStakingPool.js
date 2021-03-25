@@ -312,7 +312,7 @@ contract('StakingPool', function(accounts) {
 		)
 	})
 
-	it.only('claim', async function() {
+	it('claim', async function() {
 		const amountToEnter = bigNumberify('1000000')
 		await prevToken.setBalanceTo(userAcc, amountToEnter)
 		await adxToken.swap(amountToEnter)
@@ -340,9 +340,14 @@ contract('StakingPool', function(accounts) {
 			'INSUFFICIENT_ADX'
 		)
 
-		await (await stakingPool
+		await stakingPool.connect(governanceSigner).setDailyPenaltyMax(1)
+
+		const receipt = await (await stakingPool
 			.connect(web3Provider.getSigner(guardianAddr))
 			.claim(adxToken.address, guardianAddr, parseADX('8'))).wait()
+
+		// eslint-disable-next-line no-console
+		console.log(`claim gasUsed; ${receipt.gasUsed.toString()}`)
 	})
 
 	it('penalize', async function() {
