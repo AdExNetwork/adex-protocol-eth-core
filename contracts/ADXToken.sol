@@ -2,7 +2,6 @@
 pragma solidity ^0.6.12;
 
 import "./libs/SafeMath.sol";
-import "./libs/SafeERC20.sol";
 
 contract ADXSupplyController {
 	enum GovernanceLevel { None, Mint, All }
@@ -36,6 +35,11 @@ contract ADXSupplyController {
 	}
 }
 
+// We only need transferFrom
+interface PrevToken {
+        function transferFrom(address from, address to, uint256 amount) external;
+}
+
 contract ADXToken {
 	using SafeMath for uint;
 
@@ -53,11 +57,11 @@ contract ADXToken {
 	event Transfer(address indexed from, address indexed to, uint amount);
 
 	address public supplyController;
-	address public immutable PREV_TOKEN;
+	PrevToken public immutable PREV_TOKEN;
 
 	constructor(address supplyControllerAddr, address prevTokenAddr) public {
 		supplyController = supplyControllerAddr;
-		PREV_TOKEN = prevTokenAddr;
+		PREV_TOKEN = PrevToken(prevTokenAddr);
 	}
 
 	function balanceOf(address owner) external view returns (uint balance) {
@@ -112,6 +116,7 @@ contract ADXToken {
 	uint constant PREV_TO_CURRENT_TOKEN_MULTIPLIER = 100000000000000;
 	function swap(uint prevTokenAmount) external {
 		innerMint(msg.sender, prevTokenAmount.mul(PREV_TO_CURRENT_TOKEN_MULTIPLIER));
-		SafeERC20.transferFrom(PREV_TOKEN, msg.sender, address(0), prevTokenAmount);
+		// We don't need to require() that since the previous ADX token reverts on errors
+		PREV_TOKEN.transferFrom(msg.sender, address(0), prevTokenAmount);
 	}
 }
