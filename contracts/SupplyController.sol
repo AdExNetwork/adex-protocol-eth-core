@@ -6,8 +6,11 @@ import "./interfaces/IADXToken.sol";
 contract ADXSupplyController {
 	enum GovernanceLevel { None, Mint, All }
 
-	uint public immutable CAP = 150000000 * 1e18;
-	IADXToken public immutable ADX = IADXToken(0xADE00C28244d5CE17D72E40330B1c318cD12B7c3);
+	uint public constant CAP = 150000000 * 1e18;
+	// This amount was burned on purpose when migrating from Tom pool 2 (Staking with token 0xade) to Tom pool 3 (StakingPool with token 0xade)
+
+	uint public constant BURNED_MIN = 35000000 * 1e18;
+	IADXToken public immutable ADX;
 
 	mapping (address => uint8) public governance;
 	// Some addresses (eg StakingPools) are incentivized with a certain allowance of ADX per year
@@ -15,37 +18,39 @@ contract ADXSupplyController {
 	// Keep track of when incentive tokens were last minted for a given addr
 	mapping (address => uint) public incentiveLastMint;
 
-	constructor() {
+	constructor(IADXToken token) {
 		governance[msg.sender] = uint8(GovernanceLevel.All);
+		ADX = token;
 	}
 
 	function changeSupplyController(address newSupplyController) external {
-		require(governance[msg.sender] >= uint8(GovernanceLevel.All), 'NOT_GOVERNANCE');
+		require(governance[msg.sender] >= uint8(GovernanceLevel.All), "NOT_GOVERNANCE");
 		ADX.changeSupplyController(newSupplyController);
 	}
 
 	function setGovernance(address addr, uint8 level) external {
-		require(governance[msg.sender] >= uint8(GovernanceLevel.All), 'NOT_GOVERNANCE');
+		require(governance[msg.sender] >= uint8(GovernanceLevel.All), "NOT_GOVERNANCE");
 		governance[addr] = level;
 	}
 
 	function setIncentive(address addr, uint amountPerSecond) external {
-		require(governance[msg.sender] >= uint8(GovernanceLevel.All), 'NOT_GOVERNANCE');
+		require(governance[msg.sender] >= uint8(GovernanceLevel.All), "NOT_GOVERNANCE");
 		// no more than 1 ADX per second
-		require(amountPerSecond < 1e18, 'AMOUNT_TOO_LARGE');
+		require(amountPerSecond < 1e18, "AMOUNT_TOO_LARGE");
 		incentiveLastMint[addr] = block.timestamp;
 		incentivePerSecond[addr] = amountPerSecond;
+		// AUDIT: pending incentive lost here
 	}
 
 	function innerMint(IADXToken token, address owner, uint amount) internal {
 		uint totalSupplyAfter = token.totalSupply() + amount;
-		require(totalSupplyAfter <= CAP, 'MINT_TOO_LARGE');
+		require(totalSupplyAfter <= CAP + BURNED_MIN, "MINT_TOO_LARGE");
 		token.mint(owner, amount);
 	}
 
-	// Kept because it's used for ADXLoyaltyPool
+	// Kept because it"s used for ADXLoyaltyPool
 	function mint(IADXToken token, address owner, uint amount) external {
-		require(governance[msg.sender] >= uint8(GovernanceLevel.Mint), 'NOT_GOVERNANCE');
+		require(governance[msg.sender] >= uint8(GovernanceLevel.Mint), "NOT_GOVERNANCE");
 		innerMint(token, owner, amount);
 	}
 

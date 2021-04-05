@@ -9,113 +9,70 @@ interface IStakingPool {
 }
 
 contract Guardian {
-	// variables
-	address public owner;
-	address public court;
+	// validator => pool contract
 	mapping (address => address) public poolForValidator;
-	mapping (bytes32 => uint) public remaining;
+	// validator -> refundInterestPromilles
+	mapping (address => uint) public refundInterestPromilles;
 	// channelId => spender => isRefunded
-	mapping (bytes32 => mapping(address => bool)) refunds;
-	uint public interestPromilles = 1100;
+	mapping (bytes32 => mapping(address => bool)) public refunds;
+	// The OUTPACE contract that this Guardian will work with
 	OUTPACE outpace;
 
 	constructor(OUTPACE _outpace) {
-		owner = msg.sender;
 		outpace = _outpace;
 	}
 
-	function setOwner(address newOwner) external {
-		require(msg.sender == owner, 'not owner');
-		owner = newOwner;
-	}
-
-	function setCourt(address newCourt) external {
-		require(msg.sender == owner, 'not owner');
-		court = newCourt;
-	}
-
-	function setInterest(uint newInterest) external {
-		require(msg.sender == owner, 'not owner');
-		require(newInterest > 1000 && newInterest < 2000, 'must be between 1 and 2');
-		interestPromilles = newInterest;
-	}
-
-	function challenge(OUTPACE.Channel calldata channel) external {
-		require(msg.sender == owner, 'not owner');
-		outpace.challenge(channel);
-	}
-
-	function registerPool(address pool) external {
-		require(poolForValidator[msg.sender] == address(0), 'staking pool already registered');
+	function registerPool(address pool, uint interestPromilles) external {
+		require(poolForValidator[msg.sender] == address(0), 'STAKING_ALREADY_REGISTERED');
 		poolForValidator[msg.sender] = pool;
+		require(interestPromilles < 500, 'REFUND_PROMILLES_BOUNDS');
+		refundInterestPromilles[msg.sender] = interestPromilles;
+		// NOTE: later on, we can implement an 'initiation fee' here
+		// Which would be calling claim() here on some small amount, to ensure the claim process works for the given pool
 	}
 
-	function getBlame(OUTPACE.Channel memory channel) internal pure returns (address) {
-		//if (court == address(0)) return channel.leader;
-		//else ICourt(court).getBlame(channel);
-		// @TODO court
-		return channel.leader;
+	function setRefundPromilles(uint interestPromilles) external {
+		require(interestPromilles < 500, 'REFUND_PROMILLES_BOUNDS');
+		refundInterestPromilles[msg.sender] = interestPromilles;
 	}
 	
-	// @TODO: should we cache blame?
-	function getRefund(OUTPACE.Channel calldata channel, address spender, uint spentAmount, bytes32[] calldata proof) external {
-		require(channel.guardian == address(this), 'not guardian');
+	function getRefund(OUTPACE.Channel calldata channel, address spender, uint spentAmount, bytes32[] calldata proof, bool skipInterest) external {
+		require(channel.guardian == address(this), 'NOT_GUARDIAN');
 		bytes32 channelId = keccak256(abi.encode(channel));
-		// ensure the channel is closed (fail if it can't be closed yet)
-		// calculate blame, and how much funds we already got back from the channel, how much we should slash
-		// ensure the passed in campaign has a real deposit
-		// refund, optionally by slashing
 
-		// code-wise, perhaps make a separate method that gets executed only once that updates all the refund state (for a channel) initially to calculate who's to blame and save what's taken already; perhaps it would be best to liquidate the adx at once now
-
-		require(!refunds[channelId][spender], 'refund already received');
+		require(!refunds[channelId][spender], 'REFUND_ALREADY_RECEIVED');
 		refunds[channelId][spender] = true;
 
-		uint totalDeposited = outpace.deposits(channelId, spender);
-		uint remainingFunds = remaining[channelId];
-
+		// Verify the spendable amount leaf
 		bytes32 lastStateRoot = outpace.lastStateRoot(channelId);
 		// if lastStateRoot is 0, spentAmount can also be 0 without verification
 		if (!(spentAmount == 0 && lastStateRoot == bytes32(0))) {
-			bytes32 balanceLeaf = keccak256(abi.encode('spender', spender, spentAmount));
-			require(MerkleProof.isContained(balanceLeaf, proof, lastStateRoot), 'balance leaf not found');
-		}
-		// @TODO consider not applying the interest multiplier if there is no lastStateRoot
-		// cause without it, some might open non-legit channels with real validators, let them expire and try to claim the interest
-		uint refundableDeposit = totalDeposited-spentAmount;
-		address poolAddr = poolForValidator[getBlame(channel)];
-		// Only apply the 10% interest if the channel has been used and there's a pool from which to get it
-		if (lastStateRoot != bytes32(0) && poolAddr != address(0)) {
-			refundableDeposit = refundableDeposit * interestPromilles / 1000;
+			bytes32 balanceLeaf = keccak256(abi.encode(spender, 'spender', spentAmount));
+			require(MerkleProof.isContained(balanceLeaf, proof, lastStateRoot), 'BALANCELEAF_NOT_FOUND');
 		}
 
-		if (outpace.challenges(channelId) != type(uint256).max) {
-			//require(remaining == 0) // make sure our internal state makes sense
-			// @TODO also require that some additional time is passed (eg 1 week)
-			// this would make sure that people have time to withdraw their funds
-			//require(outpace.canBeClosed())
+		uint totalDeposited = outpace.deposits(channelId, spender);
+		uint refundablePrincipal = totalDeposited - spentAmount;
+		address blamed = channel.leader; // getBlame(channel);
+		address poolAddr = poolForValidator[blamed];
 
-			remainingFunds = outpace.remaining(channelId);
+		// Ensure the channel is closed (fail if it can't be closed yet)
+		uint challengeExpires = outpace.challenges(channelId);
+		if (challengeExpires != type(uint256).max) {
+			// Allow another 5 days before we can call .close(), giving more time to participants to withdraw
+			require(block.timestamp > challengeExpires + 5 days, 'TOO_EARLY');
 			outpace.close(channel);
-			// assign blame now
-			//blame[channel] = validator // call court if available
 		}
 
-		if (remainingFunds == 0) {
-			// Optimizing the case in which remaining has ran out - then we just claim directly to the recipient (campaign.creator)
-			require(poolAddr != address(0), 'more funds needed but no pool')
-			IStakingPool(poolAddr).claim(channel.tokenAddr, spender, refundableDeposit);
-		} else {
-			if (remainingFunds < refundableDeposit) {
-				// Note the liquidation itself is a resposibility of the staking contract
-				// the rationale is that some staking pools might hold LP tokens, so the liquidation logic should be in the pool
-				require(poolAddr != address(0), 'more funds needed but no pool')
-				IStakingPool(poolAddr).claim(channel.tokenAddr, address(this), refundableDeposit-remainingFunds);
-				remainingFunds = refundableDeposit;
-			}
+		// Finally, distribute the funds, and only use claim() if needed
+		SafeERC20.transfer(channel.tokenAddr, spender, refundablePrincipal);
 
-			remaining[channelId] = remainingFunds - refundableDeposit;
-			SafeERC20.transfer(channel.tokenAddr, spender, refundableDeposit);
+		// Do not send interest if there is no lastStateRoot (channel has not been used)
+		// cause without it, it's possible to open non-legit channels with real validators, let them expire and try to claim the interest
+		// Only apply the interest if the channel has been used and there's a pool from which to get it, and there's no opt out
+		uint interest = refundInterestPromilles[blamed];
+		if (!skipInterest && poolAddr != address(0) && interest != 0 && lastStateRoot != bytes32(0)) {
+			IStakingPool(poolAddr).claim(channel.tokenAddr, spender, (refundablePrincipal * interest) / 1000);
 		}
 	}
 }

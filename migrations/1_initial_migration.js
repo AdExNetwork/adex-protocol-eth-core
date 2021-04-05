@@ -1,5 +1,5 @@
-const Migrations = artifacts.require('./Migrations.sol')
-const OUTPACE = artifacts.require('./OUTPACE.sol')
+const Migrations = artifacts.require('Migrations')
+const OUTPACE = artifacts.require('OUTPACE')
 
 module.exports = function(deployer) {
 	deployer.deploy(OUTPACE)

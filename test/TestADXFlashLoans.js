@@ -40,7 +40,7 @@ contract('ADXFlashLoans', function(accounts) {
 		const flashLoanWeb3 = await ADXFlashLoans.new()
 		flashLoans = new Contract(flashLoanWeb3.address, ADXFlashLoans._json.abi, signer)
 
-		const identityWeb3 = await Identity.new([userAddr], [2])
+		const identityWeb3 = await Identity.new([userAddr])
 		id = new Contract(identityWeb3.address, Identity._json.abi, signer)
 	})
 

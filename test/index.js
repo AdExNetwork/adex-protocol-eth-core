@@ -1,3 +1,4 @@
+const { hexlify } = require('ethers').utils
 const { Channel } = require('../js')
 
 async function expectEVMError(promise, errString) {
@@ -12,16 +13,15 @@ async function expectEVMError(promise, errString) {
 	}
 }
 
-function sampleChannel(accounts, tokenAddr, creator, amount, validUntil, nonce) {
-	const spec = Buffer.alloc(32)
-	spec.writeUInt32BE(nonce)
+function sampleChannel(leader, follower, guardian, tokenAddr, nonce) {
+	const nonceBytes = Buffer.alloc(32)
+	nonceBytes.writeUInt32BE(nonce)
 	return new Channel({
-		creator,
+		leader,
+		follower,
+		guardian,
 		tokenAddr,
-		tokenAmount: amount,
-		validUntil,
-		validators: [accounts[0], accounts[1]],
-		spec
+		nonce: nonceBytes
 	})
 }
 
@@ -60,4 +60,46 @@ async function setTime(web3, time) {
 	})
 }
 
-module.exports = { expectEVMError, sampleChannel, moveTime, setTime }
+function takeSnapshot(web3) {
+	return new Promise((resolve, reject) => {
+		web3.currentProvider.send(
+			{
+				jsonrpc: '2.0',
+				method: 'evm_snapshot',
+				params: [],
+				id: Date.now()
+			},
+			handleJsonRPCErr.bind(null, resolve, reject)
+		)
+	})
+}
+
+function revertToSnapshot(web3, snapShotId) {
+	return new Promise((resolve, reject) => {
+		web3.currentProvider.send(
+			{
+				jsonrpc: '2.0',
+				method: 'evm_revert',
+				params: [snapShotId],
+				id: Date.now()
+			},
+			handleJsonRPCErr.bind(null, resolve, reject)
+		)
+	})
+}
+
+const getBytes32 = n => {
+	const nonce = Buffer.alloc(32)
+	nonce.writeUInt32BE(n)
+	return hexlify(nonce)
+}
+
+module.exports = {
+	expectEVMError,
+	sampleChannel,
+	moveTime,
+	setTime,
+	takeSnapshot,
+	revertToSnapshot,
+	getBytes32
+}

@@ -7,6 +7,7 @@
   },
   "main": "js/index.js",
   "dependencies": {
+    "@openzeppelin/test-helpers": "^0.5.10",
     "bn.js": "^4.11.8",
     "ethereumjs-abi": "^0.6.5",
     "ethereumjs-util": "^6.1.0",

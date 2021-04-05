@@ -5,7 +5,7 @@ const assert = require('assert')
 
 function getMappingSstore(slotNumber, keyType, key, value) {
 	// https://blog.zeppelin.solutions/ethereum-in-depth-part-2-6339cf6bddb9
-	const buf = abi.rawEncode([keyType, 'uint256'], [key, slotNumber])
+	const buf = abi.rawEncode([keyType, 'bool'], [key, slotNumber])
 	const slot = keccak256(buf)
 	return `sstore(0x${slot}, ${value})`
 }
@@ -18,16 +18,8 @@ function getMappingSstore(slotNumber, keyType, key, value) {
 // * For node usage: pass ./solc { solcModule }
 function getProxyDeployBytecode(proxiedAddr, privLevels, opts, solcModule) {
 	assert.ok(opts, 'opts not passed')
-	const { privSlot, routineAuthsSlot } = opts
+	const { privSlot } = opts
 	assert.ok(typeof privSlot === 'number', 'privSlot must be a number')
-
-	let routineAuthsCode = ''
-	if (opts.routineAuthorizations) {
-		assert.ok(typeof routineAuthsSlot === 'number', 'routineAuthsSlot must be a number')
-		routineAuthsCode = opts.routineAuthorizations
-			.map(hash => getMappingSstore(routineAuthsSlot, 'bytes32', hash, '0x01'))
-			.join('\n')
-	}
 
 	const privLevelsCode = privLevels
 		.map(([addr, level]) => getMappingSstore(privSlot, 'address', addr, level))
@@ -60,7 +52,6 @@ contract IdentityProxy {
 	{
 		assembly {
 			${privLevelsCode}
-			${routineAuthsCode}
 		}
 		${feeCode}
 	}
@@ -108,9 +99,8 @@ function getStorageSlotsFromArtifact(IdentityArtifact) {
 	)
 	const privSlot = storageVariableNodes.findIndex(x => x.name === 'privileges')
 	assert.notEqual(privSlot, -1, 'privSlot was not found')
-	const routineAuthsSlot = storageVariableNodes.findIndex(x => x.name === 'routineAuthorizations')
-	assert.notEqual(routineAuthsSlot, -1, 'routineAuthsSlot was not found')
-	return { privSlot, routineAuthsSlot }
+
+	return { privSlot }
 }
 
 module.exports = { getProxyDeployBytecode, getStorageSlotsFromArtifact }

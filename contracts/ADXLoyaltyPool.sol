@@ -185,7 +185,7 @@ contract ADXLoyaltyPoolToken {
 		if (totalSupply == 0 || totalADX == 0) {
 			innerMint(msg.sender, amount);
 		} else {
-			uint256 newShares = amount * totalSupply / totalADX;
+			uint256 newShares = (amount * totalSupply) / totalADX;
 			innerMint(msg.sender, newShares);
 		}
 		require(ADXToken.transferFrom(msg.sender, address(this), amount));
@@ -193,7 +193,7 @@ contract ADXLoyaltyPoolToken {
 
 	function leaveInner(uint256 shares) internal {
 		uint256 totalADX = ADXToken.balanceOf(address(this));
-		uint256 adxAmount = shares * totalADX / totalSupply;
+		uint256 adxAmount = (shares * totalADX) / totalSupply;
 		innerBurn(msg.sender, shares);
 		require(ADXToken.transfer(msg.sender, adxAmount));
 	}

@@ -31,14 +31,19 @@ contract('LoyaltyPool', function(accounts) {
 		const tokenWeb3 = await MockToken.new()
 		prevToken = new Contract(tokenWeb3.address, MockToken._json.abi, signer)
 
-		const adxSupplyControllerWeb3 = await ADXSupplyController.new({ from: governance })
+		const adxTokenWeb3 = await ADXToken.new(userAddr, prevToken.address)
+		adxToken = new Contract(adxTokenWeb3.address, ADXToken._json.abi, signer)
+
+		const adxSupplyControllerWeb3 = await ADXSupplyController.new(adxToken.address, {
+			from: governance
+		})
 		adxSupplyController = new Contract(
 			adxSupplyControllerWeb3.address,
 			ADXSupplyController._json.abi,
 			signerWithGovernance
 		)
-		const adxTokenWeb3 = await ADXToken.new(adxSupplyController.address, prevToken.address)
-		adxToken = new Contract(adxTokenWeb3.address, ADXToken._json.abi, signer)
+
+		await adxToken.changeSupplyController(adxSupplyController.address)
 
 		const maxADX = '150000000000000000000'
 		const loyaltyWeb3 = await LoyaltyPool.new(adxToken.address, 0, maxADX, { from: governance })

@@ -45,7 +45,6 @@ contract OUTPACE {
 	mapping (bytes32 => bytes32) public lastStateRoot;
 
 	// events
-	// @TODO should we emit the full channel? see gas costs
 	event LogChannelDeposit(bytes32 indexed channelId, uint amount);
 	event LogChannelWithdraw(bytes32 indexed channelId, uint amount);
 	event LogChannelChallenge(bytes32 indexed channelId, uint expires);
@@ -89,16 +88,19 @@ contract OUTPACE {
 		uint challengeExpirationTime = challenges[channelId];
 		require(challengeExpirationTime != CLOSED, 'CHANNEL_CLOSED');
 		// We only need to update this for challenged channels since it's needed on liquidation
+		// @TODO explain why this is OK even though it can be updated to an older state (it can then get updated to a newer)
 		if (challengeExpirationTime != 0) lastStateRoot[channelId] = withdrawal.stateRoot;
 
 		// Check the signatures
 		bytes32 hashToSign = keccak256(abi.encode(address(this), channelId, withdrawal.stateRoot));
-		require(SignatureValidator.isValid(hashToSign, withdrawal.channel.leader, withdrawal.sigLeader), 'leader sig');
-		require(SignatureValidator.isValid(hashToSign, withdrawal.channel.follower, withdrawal.sigFollower), 'follower sig');
+		require(SignatureValidator.isValid(hashToSign, withdrawal.channel.leader, withdrawal.sigLeader), 'LEADER_SIG');
+		require(SignatureValidator.isValid(hashToSign, withdrawal.channel.follower, withdrawal.sigFollower), 'FOLLOWER_SIG');
+		// adds like 8k gas for 10 withdrawals (2% increase)
+		// if (withdrawal.channel.leader != withdrawal.channel.follower) require(SignatureValidator.isValid(hashToSign, withdrawal.channel.follower, withdrawal.sigFollower), 'follower sig');
 
 		// Check the merkle proof
 		bytes32 balanceLeaf = keccak256(abi.encode(earner, withdrawal.balanceTreeAmount));
-		require(MerkleProof.isContained(balanceLeaf, withdrawal.proof, withdrawal.stateRoot), 'balance leaf not found');
+		require(MerkleProof.isContained(balanceLeaf, withdrawal.proof, withdrawal.stateRoot), 'BALANCERLEAF_NOT_FOUND');
 
 		uint toWithdraw = withdrawal.balanceTreeAmount - withdrawnPerUser[channelId][earner];
 
@@ -141,7 +143,7 @@ contract OUTPACE {
 
 	function close(Channel calldata channel) external {
 		address guardian = channel.guardian;
-		require(msg.sender == guardian, 'must be called by guardian');
+		require(msg.sender == guardian, 'NOT_GUARDIAN');
 		bytes32 channelId = keccak256(abi.encode(channel));
 		uint challengeExpires = challenges[channelId];
 		require(challengeExpires != 0 && challengeExpires != CLOSED, 'CHANNEL_NOT_CHALLENGED');

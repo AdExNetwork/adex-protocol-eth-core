@@ -26,16 +26,6 @@ contract IdentityFactory {
 		Identity(addr).execute(txns, signatures);
 	}
 
-	// When the relayer needs to do routines, it'll either call executeRoutines on the Identity directly
-	// if it's already deployed, or call `deployAndRoutines` if the account is still counterfactual
-	function deployAndRoutines(
-		bytes memory code, uint256 salt,
-		Identity.RoutineAuthorization memory auth, Identity.RoutineOperation[] memory operations
-	) public {
-		address addr = deploySafe(code, salt);
-		Identity(addr).executeRoutines(auth, operations);
-	}
-
 	// Withdraw the earnings from various fees (deploy fees and execute fees earned cause of `deployAndExecute`)
 	function withdraw(address tokenAddr, address to, uint256 tokenAmount) public {
 		require(msg.sender == creator, 'ONLY_CREATOR');
