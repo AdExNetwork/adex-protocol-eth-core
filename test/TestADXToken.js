@@ -110,6 +110,5 @@ contract('ADXToken', function(accounts) {
 
 		// Governance can step down
 		await adxSupplyController.setGovernance(governance, 0)
-		await expectEVMError(adxSupplyController.mint(tokenAddr, userAddr, largeAmnt), 'NOT_GOVERNANCE')
-	})
+		await expectEVMError(adxSupplyController.mint(tokenAddr, userAddr, largeAmnt), 'NOT_GOVERNANCE')})
 })

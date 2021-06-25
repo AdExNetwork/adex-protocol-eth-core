@@ -93,7 +93,7 @@ const getBytes32 = n => {
 	nonce.writeUInt32BE(n)
 	return hexlify(nonce)
 }
-
+const ThreeDaysInSeconds = 259200
 module.exports = {
 	expectEVMError,
 	sampleChannel,
@@ -101,5 +101,6 @@ module.exports = {
 	setTime,
 	takeSnapshot,
 	revertToSnapshot,
-	getBytes32
+	getBytes32,
+	ThreeDaysInSeconds
 }

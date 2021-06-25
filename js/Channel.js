@@ -76,4 +76,10 @@ Channel.getBalanceLeaf = function(acc, amnt) {
 	return Buffer.from(keccak256.arrayBuffer(abi.rawEncode(['address', 'uint256'], [acc, amnt])))
 }
 
+Channel.getSpenderBalanceLeaf = function(acc, amnt) {
+	return Buffer.from(
+		keccak256.arrayBuffer(abi.rawEncode(['address', 'string', 'uint256'], [acc, 'spender', amnt]))
+	)
+}
+
 module.exports = { Channel, ChannelState }

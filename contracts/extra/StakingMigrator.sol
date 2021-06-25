@@ -2,10 +2,7 @@
 pragma solidity 0.8.1;
 
 import "../interfaces/IADXToken.sol";
-
-interface IStakingPool {
-	function enterTo(address recipient, uint amount) external;
-}
+import "../interfaces/IStakingPool.sol";
 
 interface ILegacyStaking {
 	struct BondState {

@@ -3,10 +3,7 @@ pragma solidity 0.8.1;
 
 import "./OUTPACE.sol";
 import "./libs/SafeERC20.sol";
-
-interface IStakingPool {
-	function claim(address tokenOut, address to, uint amount) external;
-}
+import "./interfaces/IStakingPool.sol";
 
 contract Guardian {
 	// validator => pool contract
@@ -36,7 +33,12 @@ contract Guardian {
 		refundInterestPromilles[msg.sender] = interestPromilles;
 	}
 	
-	function getRefund(OUTPACE.Channel calldata channel, address spender, uint spentAmount, bytes32[] calldata proof, bool skipInterest) external {
+	function getRefund(
+		OUTPACE.Channel calldata channel,
+		address spender, uint spentAmount,
+		bytes32[] calldata proof,
+		bool skipInterest
+	) external {
 		require(channel.guardian == address(this), 'NOT_GUARDIAN');
 		bytes32 channelId = keccak256(abi.encode(channel));
 

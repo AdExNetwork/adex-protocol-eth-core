@@ -3,11 +3,7 @@ pragma solidity 0.8.1;
 
 import "../interfaces/IERC20.sol";
 import "../libs/SafeERC20.sol";
-
-interface IStakingPool {
-	function ADXToken() external returns (address);
-	function enterTo(address recipient, uint amount) external;
-}
+import "../interfaces/IStakingPool.sol";
 
 contract GaslessSweeper {
 	function sweep(IStakingPool pool, address[] memory depositors) external {

@@ -1,9 +1,10 @@
 /** globals afterEach */
-const { providers, Contract } = require('ethers')
-const { bigNumberify, parseUnits } = require('ethers').utils
-
+const { providers, Contract, ethers } = require('ethers')
+const { bigNumberify } = require('ethers').utils
+const { ecsign } = require('ethereumjs-util')
 const { expectEVMError, takeSnapshot, revertToSnapshot, moveTime } = require('./')
-const { UnbondCommitment } = require('../js')
+const { UnbondCommitment, getApprovalDigest } = require('../js')
+const { parseADX } = require('./lib')
 
 const StakingPoolArtifact = artifacts.require('StakingPool')
 const MockChainlink = artifacts.require('MockChainlink')
@@ -14,8 +15,8 @@ const ADXToken = artifacts.require('ADXToken')
 
 const web3Provider = new providers.Web3Provider(web3.currentProvider)
 
-const parseADX = v => parseUnits(v, 18)
 const DAY_SECONDS = 24 * 60 * 60
+const wallet = ethers.Wallet.createRandom()
 
 contract('StakingPool', function(accounts) {
 	let stakingPool
@@ -32,7 +33,20 @@ contract('StakingPool', function(accounts) {
 	const guardianAddr = accounts[1]
 	const validatorAddr = accounts[2]
 	const governanceAddr = accounts[3]
+	const anotherUser = accounts[4]
 	const governanceSigner = web3Provider.getSigner(governanceAddr)
+
+	async function enterStakingPool(acc, amountToEnter) {
+		// const amountToEnter = bigNumberify('1000000')
+		// set user balance
+		await prevToken.connect(web3Provider.getSigner(acc)).setBalanceTo(acc, amountToEnter)
+		await adxToken.connect(web3Provider.getSigner(acc)).swap(amountToEnter)
+		// approve Staking pool
+		await (await adxToken
+			.connect(web3Provider.getSigner(acc))
+			.approve(stakingPool.address, parseADX('1000'))).wait()
+		await (await stakingPool.connect(web3Provider.getSigner(acc)).enter(parseADX('10'))).wait()
+	}
 
 	before(async function() {
 		const tokenWeb3 = await MockToken.new()
@@ -124,7 +138,6 @@ contract('StakingPool', function(accounts) {
 			newDailyPenalty,
 			'change penalty max value'
 		)
-		// @TODO reset limits
 	})
 
 	it('setRageReceived', async function() {
@@ -138,6 +151,77 @@ contract('StakingPool', function(accounts) {
 			await stakingPool.rageReceivedPromilles(),
 			newRageReceived,
 			'change rage received value'
+		)
+	})
+
+	it('setWhitelistedClaimToken', async function() {
+		expectEVMError(stakingPool.setWhitelistedClaimToken(anotherUser, true), 'NOT_GOVERNANCE')
+		await stakingPool.connect(governanceSigner).setWhitelistedClaimToken(anotherUser, true)
+
+		assert.equal(
+			await stakingPool.whitelistedClaimTokens(anotherUser),
+			true,
+			'set whitelisted claim token'
+		)
+	})
+
+	it('setGuardian', async function() {
+		expectEVMError(stakingPool.setGuardian(anotherUser), 'NOT_GOVERNANCE')
+		const receipt = await (await stakingPool
+			.connect(governanceSigner)
+			.setGuardian(anotherUser)).wait()
+		const newGuardianEv = receipt.events.find(x => x.event === 'LogNewGuardian')
+		assert.ok(newGuardianEv, 'should emit guardian ev')
+		assert.equal(await stakingPool.guardian(), anotherUser, 'set guardian')
+	})
+
+	it('approve', async function() {
+		const amountToEnter = bigNumberify('1000000')
+		await enterStakingPool(userAcc, amountToEnter)
+		const amountToApprove = 10
+		const receipt = await (await stakingPool.approve(anotherUser, amountToApprove)).wait()
+		const approveEv = receipt.events.find(x => x.event === 'Approval')
+		assert.ok(approveEv, 'has an approve event')
+
+		// check allowance
+		assert.equal(
+			(await stakingPool.allowance(userAcc, anotherUser)).toNumber(),
+			amountToApprove,
+			'has correct approve amount'
+		)
+	})
+
+	it('permit', async function() {
+		const chainId = (await ethers.getDefaultProvider().getNetwork()).chainId
+		const owner = wallet.address
+		const spender = anotherUser
+		const value = 10
+		const deadline = (await (await governanceSigner.provider.getBlock('latest')).timestamp) + 50000
+
+		const data = getApprovalDigest(
+			{
+				name: 'AdEx Staking Token',
+				address: stakingPool.address,
+				chainId
+			},
+			{
+				owner,
+				spender,
+				value
+			},
+			0,
+			deadline
+		)
+		const { v, r, s } = ecsign(
+			Buffer.from(data.slice(2), 'hex'),
+			Buffer.from(wallet.privateKey.slice(2), 'hex')
+		)
+
+		await stakingPool.permit(wallet.address, anotherUser, value, deadline, v, r, s)
+		assert.equal(
+			(await stakingPool.allowance(wallet.address, anotherUser)).toNumber(),
+			value,
+			'has correct permit amount'
 		)
 	})
 
@@ -180,6 +264,11 @@ contract('StakingPool', function(accounts) {
 		await moveTime(web3, DAY_SECONDS * 10)
 		await (await stakingPool.enter(parseADX('10'))).wait()
 
+		assert.equal(
+			(await stakingPool.balanceOf(userAcc)).toString(),
+			'10001157273463719476',
+			'should mint additional shares'
+		)
 		assert.ok((await stakingPool.balanceOf(userAcc)).gt(prevBal), 'should mint additional shares')
 	})
 
@@ -254,7 +343,6 @@ contract('StakingPool', function(accounts) {
 		const sharesToMint = parseADX('10')
 		await (await stakingPool.enter(sharesToMint)).wait()
 
-		console.log('1 - to debug out of gas')
 		const leaveReceipt = await (await stakingPool.leave(parseADX('10'), false)).wait()
 		const logLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogLeave')
 		await expectEVMError(
@@ -269,7 +357,6 @@ contract('StakingPool', function(accounts) {
 			'NO_COMMITMENT'
 		)
 
-		console.log('2 - to debug out of gas')
 		const withdrawReceipt = await (await stakingPool.withdraw(
 			sharesToMint,
 			logLeaveEv.args.unlocksAt.toNumber(),
@@ -279,7 +366,6 @@ contract('StakingPool', function(accounts) {
 		const logWithdrawEv = withdrawReceipt.events.find(ev => ev.event === 'LogWithdraw')
 		assert.ok(logWithdrawEv, 'should have LogWithdraw ev')
 
-		console.log('3 - to debug out of gas')
 		const unbondCommitment = new UnbondCommitment({
 			...logLeaveEv.args,
 			shares: logLeaveEv.args.shares.toString(),
@@ -289,7 +375,6 @@ contract('StakingPool', function(accounts) {
 		assert.equal((await stakingPool.commitments(unbondCommitment.hashHex())).toString(), '0')
 
 		assert.equal((await stakingPool.lockedShares(logLeaveEv.args.owner)).toString(), '0')
-		// @TODO check shares amount
 	})
 
 	it('rageLeave', async function() {
@@ -303,7 +388,6 @@ contract('StakingPool', function(accounts) {
 		const currentBalance = await adxToken.balanceOf(userAcc)
 		const leaveReceipt = await (await stakingPool.rageLeave(parseADX('10'), false)).wait()
 		const logRageLeaveEv = leaveReceipt.events.find(ev => ev.event === 'LogRageLeave')
-
 		assert.equal(
 			(await adxToken.balanceOf(userAcc)).toString(),
 			currentBalance.add(logRageLeaveEv.args.receivedTokens).toString(),
